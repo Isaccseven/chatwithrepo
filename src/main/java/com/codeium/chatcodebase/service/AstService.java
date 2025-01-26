@@ -36,8 +36,7 @@ public class AstService {
                 file.path(),
                 file.content(),
                 serializeAst(cu),
-                metadata,
-                file.lastCommitId()
+                metadata
             );
         } catch (ParseProblemException e) {
             throw new AstParseException("Failed to parse file: " + file.path(), e);
@@ -77,15 +76,13 @@ public class AstService {
         private final String rawContent;
         private final String astContent;
         private final AstMetadata metadata;
-        private final String lastCommitId;
 
         public AstDocument(String filePath, String rawContent, String astContent, 
-                         AstMetadata metadata, String lastCommitId) {
+                         AstMetadata metadata ) {
             this.filePath = filePath;
             this.rawContent = rawContent;
             this.astContent = astContent;
             this.metadata = metadata;
-            this.lastCommitId = lastCommitId;
         }
     }
 

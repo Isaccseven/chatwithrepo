@@ -40,24 +40,45 @@ public class ChatService {
         return docs.stream()
                 .map(doc -> """
                         File: %s
+                        Package: %s
                         Classes: %s
+                        Methods: %s
                         Dependencies: %s
-                        AST Excerpt: %s
+                        Code Content:
+                        ```java
+                        %s
+                        ```
                         """.formatted(
                         doc.getMetadata().get("filePath"),
+                        doc.getMetadata().get("package"),
                         doc.getMetadata().get("classes"),
+                        doc.getMetadata().get("methods"),
                         doc.getMetadata().get("dependencies"),
-                        truncate(doc.getText(), 500)))
+                        truncate(extractCodeContent(doc.getText()), 1000)))
                 .collect(Collectors.joining("\n---\n"));
+    }
+
+    private String extractCodeContent(String fullText) {
+        // Extract only the actual code content from the full text
+        int contentIndex = fullText.indexOf("Content:");
+        if (contentIndex != -1) {
+            return fullText.substring(contentIndex + "Content:".length()).trim();
+        }
+        return fullText;
     }
 
     private String createPromptText(String query, String context) {
         return """
-                Code Context:
+                You are analyzing a Java codebase. Here is the relevant code context:
+                
                 %s
-
-                Question: %s
-                Answer:""".formatted(context, query);
+                
+                Based on this context, please answer the following question:
+                %s
+                
+                Please provide a clear and concise answer, referencing specific parts of the code when relevant.
+                If you need to show code examples, use markdown code blocks with the appropriate language tag.
+                """.formatted(context, query);
     }
 
     private String truncate(String text, int maxLength) {
