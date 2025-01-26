@@ -17,8 +17,10 @@ public class CodeAnalysisOrchestrator {
     private final GitLabService gitLabService;
     private final AstService astService;
     private final VectorStoreService vectorStore;
+    private final DependencyService dependencyService;
     
     private final ConcurrentHashMap<String, AnalysisStatus> analysisStatusMap = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, DependencyService.DependencyData> dependencyDataMap = new ConcurrentHashMap<>();
 
     @Async
     public void analyzeRepository(String projectId) {
@@ -29,14 +31,20 @@ public class CodeAnalysisOrchestrator {
             // Step 1: Fetch repository files
             status.setCurrentStep(AnalysisStep.FETCHING_FILES);
             List<GitLabService.CodeFile> files = gitLabService.fetchRepository(projectId);
-            status.setProgress(25);
+            status.setProgress(20);
             
             // Step 2: Parse AST
             status.setCurrentStep(AnalysisStep.PARSING_AST);
             List<AstService.AstDocument> astDocs = astService.parseFiles(files);
-            status.setProgress(50);
+            status.setProgress(40);
             
-            // Step 3: Generate embeddings and store
+            // Step 3: Analyze dependencies
+            status.setCurrentStep(AnalysisStep.ANALYZING_DEPENDENCIES);
+            DependencyService.DependencyData dependencyData = dependencyService.analyzeDependencies(astDocs);
+            dependencyDataMap.put(projectId, dependencyData);
+            status.setProgress(60);
+            
+            // Step 4: Generate embeddings and store
             status.setCurrentStep(AnalysisStep.STORING_VECTORS);
             vectorStore.storeAstDocuments(astDocs);
             status.setProgress(100);
@@ -56,6 +64,10 @@ public class CodeAnalysisOrchestrator {
     public AnalysisStatus getAnalysisStatus(String projectId) {
         return analysisStatusMap.getOrDefault(projectId, 
             new AnalysisStatus(AnalysisStep.NOT_STARTED, 0, null, false));
+    }
+    
+    public DependencyService.DependencyData getDependencyData(String projectId) {
+        return dependencyDataMap.get(projectId);
     }
     
     @Getter
@@ -99,6 +111,7 @@ public class CodeAnalysisOrchestrator {
         NOT_STARTED,
         FETCHING_FILES,
         PARSING_AST,
+        ANALYZING_DEPENDENCIES,
         STORING_VECTORS,
         COMPLETED
     }

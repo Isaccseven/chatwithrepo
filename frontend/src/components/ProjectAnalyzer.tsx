@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Box, Button, LinearProgress, TextField, Typography } from '@mui/material';
-import { analyzeRepository, getAnalysisStatus, AnalysisStatus } from '../api/api';
+import { analyzeRepository, getAnalysisStatus, AnalysisStatus, DependencyData, getDependencies } from '../api/api';
 
 interface ProjectAnalyzerProps {
-  onAnalysisComplete: () => void;
+  onAnalysisComplete: (data: DependencyData) => void;
 }
 
 export function ProjectAnalyzer({ onAnalysisComplete }: ProjectAnalyzerProps) {
@@ -34,7 +34,12 @@ export function ProjectAnalyzer({ onAnalysisComplete }: ProjectAnalyzerProps) {
       if (status.currentStep !== 'COMPLETED') {
         setTimeout(pollStatus, 1000);
       } else if (status.success) {
-        onAnalysisComplete();
+        try {
+          const dependencyData = await getDependencies(projectId);
+          onAnalysisComplete(dependencyData);
+        } catch (err) {
+          setError('Failed to fetch dependency data');
+        }
       }
     } catch (err) {
       setError('Failed to get analysis status');
