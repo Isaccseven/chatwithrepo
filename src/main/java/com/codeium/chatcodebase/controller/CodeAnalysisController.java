@@ -8,10 +8,14 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/v1")
-@RequiredArgsConstructor
 public class CodeAnalysisController {
     private final CodeAnalysisOrchestrator orchestrator;
     private final ChatService chatService;
+
+    public CodeAnalysisController(CodeAnalysisOrchestrator orchestrator, ChatService chatService) {
+        this.orchestrator = orchestrator;
+        this.chatService = chatService;
+    }
 
     @PostMapping("/analyze/{projectId}")
     public ResponseEntity<Void> startAnalysis(@PathVariable String projectId) {
