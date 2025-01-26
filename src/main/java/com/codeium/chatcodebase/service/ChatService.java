@@ -1,89 +1,67 @@
 package com.codeium.chatcodebase.service;
 
-import org.springframework.ai.chat.prompt.Prompt;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.client.advisor.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.chat.prompt.SystemPromptTemplate;
+import org.springframework.ai.chat.messages.Message;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.rag.Query;
+import org.springframework.ai.rag.postretrieval.ranking.DocumentRanker;
+import org.springframework.ai.rag.preretrieval.query.transformation.QueryTransformer;
+import org.springframework.ai.rag.preretrieval.query.transformation.RewriteQueryTransformer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
+@Slf4j
 @Service
 public class ChatService {
     private final ChatClient chatClient;
     private final VectorStoreService vectorStore;
+    private final ChatModel chatModel;
 
-    @Value("${spring.ai.system-prompt}")
-    private String systemPrompt;
 
-    public ChatService(ChatModel chatModel, VectorStoreService vectorStore) {
+    public ChatService(VectorStoreService vectorStore, ChatModel chatModel) {
         this.chatClient = ChatClient.builder(chatModel).build();
         this.vectorStore = vectorStore;
+        this.chatModel = chatModel;
     }
 
     public String chatWithContext(String query) {
-        List<Document> contextDocs = vectorStore.semanticSearch(query);
-        String context = buildContextString(contextDocs);
-
-        Prompt prompt = new Prompt(List.of(
-                new SystemMessage(systemPrompt),
-                new UserMessage(createPromptText(query, context))));
-
-        return chatClient.prompt(prompt).call().chatResponse().getResult().getOutput().getText();
-    }
-
-    private String buildContextString(List<Document> docs) {
-        return docs.stream()
-                .map(doc -> """
-                        File: %s
-                        Package: %s
-                        Classes: %s
-                        Methods: %s
-                        Dependencies: %s
-                        Code Content:
-                        ```java
-                        %s
-                        ```
-                        """.formatted(
-                        doc.getMetadata().get("filePath"),
-                        doc.getMetadata().get("package"),
-                        doc.getMetadata().get("classes"),
-                        doc.getMetadata().get("methods"),
-                        doc.getMetadata().get("dependencies"),
-                        truncate(extractCodeContent(doc.getText()), 1000)))
-                .collect(Collectors.joining("\n---\n"));
-    }
-
-    private String extractCodeContent(String fullText) {
-        // Extract only the actual code content from the full text
-        int contentIndex = fullText.indexOf("Content:");
-        if (contentIndex != -1) {
-            return fullText.substring(contentIndex + "Content:".length()).trim();
-        }
-        return fullText;
-    }
-
-    private String createPromptText(String query, String context) {
-        return """
-                You are analyzing a Java codebase. Here is the relevant code context:
+        String systemPrompt = """
+                You are a senior Java developer assistant analyzing a codebase.
+                Use the following code context to answer the user's question:
                 
-                %s
+                {context}
                 
-                Based on this context, please answer the following question:
-                %s
-                
-                Please provide a clear and concise answer, referencing specific parts of the code when relevant.
-                If you need to show code examples, use markdown code blocks with the appropriate language tag.
-                """.formatted(context, query);
-    }
+                When referencing code, use specific file names, class names, and line numbers.
+                Format code examples in markdown with appropriate language tags.
+                Keep responses concise but informative, focusing on the most relevant parts of the codebase.
+                """;
 
-    private String truncate(String text, int maxLength) {
-        return text.length() > maxLength
-                ? text.substring(0, maxLength) + "..."
-                : text;
+        Query chatQuery = new Query(query);
+
+        QueryTransformer queryTransformer = RewriteQueryTransformer.builder()
+                .chatClientBuilder(ChatClient.builder(chatModel))
+                .build();
+
+        Query transformedQuery = queryTransformer.transform(chatQuery);
+        log.info("Transformed query: {}", transformedQuery.text());
+
+        String response = chatClient.prompt()
+                .advisors(new QuestionAnswerAdvisor(vectorStore.getVectorStore()))
+                .user(transformedQuery.text())
+                .system(systemPrompt)
+                .call()
+                .content();
+
+        log.info("Chat response: {}", response);
+        return response;
     }
 }

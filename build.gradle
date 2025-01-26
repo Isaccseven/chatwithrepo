@@ -1,16 +1,15 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.4.2'
-    id 'io.spring.dependency-management' version '1.1.7'
+    id 'org.springframework.boot' version '3.2.2'
+    id 'io.spring.dependency-management' version '1.1.4'
+    id 'com.github.node-gradle.node' version '7.0.1'
 }
 
 group = 'com.codeium'
 version = '0.0.1-SNAPSHOT'
 
 java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(22)
-    }
+    sourceCompatibility = '21'
 }
 
 configurations {
@@ -22,56 +21,51 @@ configurations {
 repositories {
     mavenCentral()
     maven { url 'https://repo.spring.io/milestone' }
-     maven {
-        url "https://jitpack.io"
-        content {
-            includeGroup "com.github.gitlab4j.gitlab4j-api"
-        }
-    }
-}
-
-ext {
-    set('springAiVersion', "1.0.0-M5")
-    set('javaParserVersion', "3.25.8")
 }
 
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
-    
-    // Spring AI
-    implementation 'org.springframework.ai:spring-ai-core'
-    implementation 'org.springframework.ai:spring-ai-ollama-spring-boot-starter'
-    implementation 'org.springframework.ai:spring-ai-pgvector-store-spring-boot-starter'
-    implementation 'com.github.gitlab4j.gitlab4j-api:gitlab4j-api:main-SNAPSHOT'
-    
-    // Database
-    implementation 'org.postgresql:postgresql:42.7.1'
-
-    
-
-    // Java Parser
-    implementation "com.github.javaparser:javaparser-core:${javaParserVersion}"
-    
+    implementation 'org.springframework.ai:spring-ai-ollama-client:1.0.0-M5'
+    implementation 'org.springframework.ai:spring-ai-pgvector-store:1.0.0-M5'
+    implementation 'org.gitlab4j:gitlab4j-api:5.5.0'
+    implementation 'com.github.javaparser:javaparser-core:3.25.9'
+    implementation 'org.postgresql:postgresql'
     compileOnly 'org.projectlombok:lombok'
-    
-    developmentOnly 'org.springframework.boot:spring-boot-devtools'
-    developmentOnly 'org.springframework.boot:spring-boot-docker-compose'
-    developmentOnly 'org.springframework.ai:spring-ai-spring-boot-docker-compose'
-    
-    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     annotationProcessor 'org.projectlombok:lombok'
-    
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-    testImplementation 'org.springframework.ai:spring-ai-spring-boot-testcontainers'
-    testImplementation 'org.testcontainers:junit-jupiter'
-    testImplementation 'org.testcontainers:postgresql'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-dependencyManagement {
-    imports {
-        mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
+node {
+    version = '20.11.0'
+    npmVersion = '10.4.0'
+    download = true
+    nodeProjectDir = file("${project.projectDir}/frontend")
+}
+
+tasks.register('buildFrontend') {
+    dependsOn 'npm_run_build'
+}
+
+tasks.register('npm_run_build') {
+    dependsOn 'npm_install'
+    group = 'build'
+    description = 'Build the frontend'
+    doLast {
+        project.exec {
+            workingDir = file("${project.projectDir}/frontend")
+            if (System.getProperty('os.name').toLowerCase(Locale.ROOT).contains('windows')) {
+                commandLine 'cmd', '/c', 'npm', 'run', 'build'
+            } else {
+                commandLine 'npm', 'run', 'build'
+            }
+        }
+    }
+}
+
+tasks.named('bootJar') {
+    dependsOn 'buildFrontend'
+    from("${project.projectDir}/frontend/dist") {
+        into 'static'
     }
 }
 

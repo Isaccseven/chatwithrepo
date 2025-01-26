@@ -1,5 +1,6 @@
 package com.codeium.chatcodebase.service;
 
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
@@ -16,6 +17,7 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Getter
 public class VectorStoreService {
     private final VectorStore vectorStore;
     private static final Logger log = LoggerFactory.getLogger(VectorStoreService.class);
@@ -154,11 +156,12 @@ public class VectorStoreService {
     }
 
     public List<Document> semanticSearch(String query) {
-        return vectorStore.similaritySearch(SearchRequest.builder()
+       List<Document> foundDocuments = vectorStore.similaritySearch(SearchRequest.builder()
                 .query(query)
                 .topK(10)  // Increased from 5 to get more context
-                .similarityThreshold(0.6)  // Slightly lowered for better recall
-                .filterExpression("metadata.package IS NOT NULL")  // Only return valid Java files
-                .build());
+                .similarityThreshold(0.8)  // Slightly lowered for better recall
+                .build());  // Remove filter as it's causing issues and not strictly necessary
+        log.info("Found {} relevant documents for query: {}", foundDocuments, query);
+        return foundDocuments;
     }
 }
