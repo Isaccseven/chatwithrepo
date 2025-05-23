@@ -17,15 +17,24 @@ export class AstService {
 
   private parseFile(file: CodeFile): AstDocument {
     try {
+      const plugins = this.getPlugins(file.path);
       const ast = parse(file.content, {
         sourceType: 'module',
-        plugins: ['typescript', 'jsx']
+        plugins
       });
       const metadata = this.extractMetadata(ast);
       return new AstDocument(file.path, file.content, JSON.stringify(ast, null, 2), metadata);
     } catch (error) {
       throw new AstParseException(`Failed to parse file: ${file.path}`, error);
     }
+  }
+
+  private getPlugins(filePath: string): string[] {
+    const plugins = ['jsx'];
+    if (filePath.endsWith('.ts') || filePath.endsWith('.tsx')) {
+      plugins.push('typescript');
+    }
+    return plugins;
   }
 
   private extractMetadata(ast: t.File): AstMetadata {
