@@ -1,56 +1,30 @@
 package com.codeium.chatcodebase.service;
 
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.document.Document;
-import org.springframework.ai.vectorstore.SearchRequest;
-import org.springframework.ai.vectorstore.VectorStore;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
-@Getter
-public class VectorStoreService {
-    private final VectorStore vectorStore;
-    private static final Logger log = LoggerFactory.getLogger(VectorStoreService.class);
+public class EmbeddingService {
+    private static final Logger log = LoggerFactory.getLogger(EmbeddingService.class);
 
-    @Value("${spring.ai.vectorstore.max-tokens:8000}")
-    private int maxTokens;
+    private final VectorStoreService vectorStoreService;
 
-    @Value("${spring.ai.vectorstore.chunk-size:6000}")
-    private int chunkSize;
-
-    @Value("${spring.ai.vectorstore.chunk-overlap:500}")
-    private int chunkOverlap;
-
-    private static final int BUFFER_SIZE = 8192;
-
-    public void storeAstDocuments(List<AstService.AstDocument> documents) {
-        for (AstService.AstDocument doc : documents) {
-            try {
-                List<Document> chunks = generateEmbeddings(doc);
-                if (!chunks.isEmpty()) {
-                    vectorStore.add(chunks);
-                }
-            } catch (Exception e) {
-                log.error("Failed to process document: {}", doc.getFilePath(), e);
-            }
-        }
-    }
-
-    private List<Document> generateEmbeddings(AstService.AstDocument doc) {
+    public List<Document> generateEmbeddings(AstService.AstDocument doc) {
         String content = doc.getRawContent();
         if (content == null || content.isEmpty()) {
             return List.of();
         }
+
+        int chunkSize = vectorStoreService.getChunkSize();
+        int chunkOverlap = vectorStoreService.getChunkOverlap();
 
         if (content.length() / 4 <= chunkSize) {
             return List.of(convertToAiDocument(doc, content, 1, 1));
@@ -59,17 +33,17 @@ public class VectorStoreService {
         List<Document> documents = new ArrayList<>();
         StringBuilder currentChunk = new StringBuilder(chunkSize * 4);
         int chunkIndex = 1;
-        int totalChunks = estimateTotalChunks(content.length());
+        int totalChunks = estimateTotalChunks(content.length(), chunkSize);
 
         try (java.io.StringReader reader = new java.io.StringReader(content)) {
-            char[] buffer = new char[BUFFER_SIZE];
+            char[] buffer = new char[VectorStoreService.BUFFER_SIZE];
             int bytesRead;
 
             while ((bytesRead = reader.read(buffer)) != -1) {
                 currentChunk.append(buffer, 0, bytesRead);
 
                 while (currentChunk.length() >= chunkSize * 4) {
-                    int endIndex = findChunkEndIndex(currentChunk);
+                    int endIndex = findChunkEndIndex(currentChunk, chunkSize, chunkOverlap);
                     documents.add(convertToAiDocument(
                         doc,
                         currentChunk.substring(0, endIndex),
@@ -101,12 +75,12 @@ public class VectorStoreService {
         return documents;
     }
 
-    private int estimateTotalChunks(int contentLength) {
+    private int estimateTotalChunks(int contentLength, int chunkSize) {
         int chunkSizeInChars = chunkSize * 4;
         return (contentLength + chunkSizeInChars - 1) / chunkSizeInChars;
     }
 
-    private int findChunkEndIndex(StringBuilder content) {
+    private int findChunkEndIndex(StringBuilder content, int chunkSize, int chunkOverlap) {
         int targetEnd = Math.min(content.length(), chunkSize * 4);
         int searchStart = Math.max(0, targetEnd - (chunkOverlap * 4));
 
@@ -121,7 +95,7 @@ public class VectorStoreService {
     }
 
     private Document convertToAiDocument(AstService.AstDocument doc, String chunkContent, int chunkIndex, int totalChunks) {
-        Map<String, Object> metadata = enhanceMetadata(doc, chunkIndex, totalChunks);
+        Map<String, Object> metadata = vectorStoreService.enhanceMetadata(doc, chunkIndex, totalChunks);
 
         return new Document(
             new StringBuilder(chunkContent.length() + 200)
@@ -136,28 +110,5 @@ public class VectorStoreService {
                 .toString(),
             metadata
         );
-    }
-
-    private Map<String, Object> enhanceMetadata(AstService.AstDocument doc, int chunkIndex, int totalChunks) {
-        Map<String, Object> metadata = new HashMap<>();
-        metadata.put("filePath", doc.getFilePath());
-        metadata.put("package", doc.getMetadata().getPackageName());
-        metadata.put("classes", doc.getMetadata().getClasses());
-        metadata.put("methods", doc.getMetadata().getMethods());
-        metadata.put("fields", doc.getMetadata().getFields());
-        metadata.put("dependencies", doc.getMetadata().getDependencies());
-        metadata.put("chunkIndex", chunkIndex);
-        metadata.put("totalChunks", totalChunks);
-        return metadata;
-    }
-
-    public List<Document> semanticSearch(String query) {
-       List<Document> foundDocuments = vectorStore.similaritySearch(SearchRequest.builder()
-                .query(query)
-                .topK(10)
-                .similarityThreshold(0.8)
-                .build());
-        log.info("Found {} relevant documents for query: {}", foundDocuments, query);
-        return foundDocuments;
     }
 }
